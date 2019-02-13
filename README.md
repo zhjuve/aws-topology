@@ -1,6 +1,6 @@
 # Customer's Graph Topology
 
-Forked from wspi/aws-topology, updated to current Neo4j (3.5.1) and py2neo 3.x (different methods).
+Forked from wspi/aws-topology, updated to current Neo4j (3.5.1) and py2neo 3.x (different methods). Added also Neovis.js example (can be opened locally in browser).
 
 ## Under the Hood
 ### Neo4j
