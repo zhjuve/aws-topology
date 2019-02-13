@@ -1,5 +1,7 @@
 # Customer's Graph Topology
 
+Forked from wspi/aws-topology, updated to current Neo4j (3.5.1) and py2neo 3.x (different methods).
+
 ## Under the Hood
 ### Neo4j
 Graph database, used for visualize and query customer graph
@@ -30,6 +32,7 @@ AWS SDK for python, used to get customer info
 ```docker run --publish=7474:7474 --publish=7687:7687 --env=NEO4J_AUTH=none neo4j```
 
 ### Script
+Corrent region name in \*.py file manually.
 ```
 pip install -r requirements.txt
 export AWS_PROFILE=XYZ
