@@ -83,7 +83,7 @@ def create_subnets(vpc_id,vpc_name):
                     if tag['Key'] == 'Name':
                         name = tag['Value']
             tx = graph.begin()
-            graphSubnet = Node("Subnet", subnetId=subnet['SubnetId'], name=name, az=subnet['AvailabilityZone'], cidr=subnet['CidrBlock'], parent=vpc_name)
+            graphSubnet = Node("Subnet", subnetId=subnet['SubnetId'], name=name, az=subnet['AvailabilityZone'], cidr=subnet['CidrBlock'], parent=subnet['AvailabilityZone'])
             tx.merge(graphSubnet)
             tx.commit()
             subnetsArray.append(graphSubnet)
@@ -130,11 +130,9 @@ def create_ec2():
                         for tag in instance['Instances'][0]['Tags']:
                             if tag['Key'] == 'Name':
                                 name = tag['Value']
-                    graphEc2 = Node("EC2", instanceId=instanceId, name=name, state=state, type=instanceType)
                     selectorSubnet = NodeSelector(graph)
                     graphSubnet = selectorSubnet.select("Subnet",subnetId=subnetId).first()
-    #                graphSubnet = selector.select("Subnet",property_key='subnetId',property_value=subnetId)
-    #                list(graphSubnet);
+                    graphEc2 = Node("EC2", instanceId=instanceId, name=name, state=state, type=instanceType, parent=graphSubnet['name'])
                     rel = Relationship(graphEc2, "BELONGS", graphSubnet)
                     tx.create(rel)
                     tx.commit()
@@ -247,6 +245,7 @@ def create_lambda():
 def create_sg():
     securityGroups = ec2.describe_security_groups()
     for sg in securityGroups['SecurityGroups']:
+        print(sg)
         tx = graph.begin()
         graphSg = Node("SecurityGroup", securityGroupId=sg['GroupId'], name=sg['GroupName'])
         tx.merge(graphSg)
