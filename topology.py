@@ -18,11 +18,12 @@ def create_vpc(graphRegion):
                     if tag['Key'] == 'Name':
                         name = tag['Value']
 
-            subnets = create_subnets(vpc['VpcId'])
-            igws = create_igws(vpc['VpcId'])
+            subnets = create_subnets(vpc['VpcId'],name)
+            azs = create_azs(vpc['VpcId'],name,graphRegion['name'])
+            igws = create_igws(vpc['VpcId'],name)
 
             tx = graph.begin()
-            graphVpc = Node("VPC", vpcId=vpc['VpcId'], name=name, cidr=vpc['CidrBlock'])
+            graphVpc = Node("VPC", vpcId=vpc['VpcId'], name=name, cidr=vpc['CidrBlock'], region=graphRegion['name'])
             tx.merge(graphVpc)
             rel = Relationship(graphVpc, "BELONGS", graphRegion)
             tx.create(rel)
@@ -32,9 +33,40 @@ def create_vpc(graphRegion):
             for igw in igws:
                 rel = Relationship(igw, "ATTACHED", graphVpc)
                 tx.create(rel)
+            for az in azs:
+                rel = Relationship(az, "BELONGS", graphVpc)
+                tx.create(rel)
             tx.commit()
 
-def create_subnets(vpc_id):
+def create_azs(vpc_id,vpc_name,region):
+    arrayAZs = []
+    azs = ec2.describe_availability_zones(Filters=[
+                                              {
+                                                  'Name': 'region-name',
+                                                  'Values': [
+                                                      region,
+                                                  ]
+                                              },
+                                          ])
+#describe_subnets(Filters=[{'Name': 'vpc-id','Values':[vpc_id]}])
+    if azs['AvailabilityZones'] == []:
+        pass
+    else:
+        for az in azs['AvailabilityZones']:
+            name = ""
+            if (az.__contains__('Tags')):
+                for tag in az['Tags']:
+                    if tag['Key'] == 'ZoneName':
+                        name = tag['Value']
+                        print("zone name=",name)
+            tx = graph.begin()
+            graphAZ = Node("AZ", azId=az['ZoneId'], name=az['ZoneName'], parent=vpc_name)
+            tx.merge(graphAZ)
+            tx.commit()
+            arrayAZs.append(graphAZ)
+    return arrayAZs
+
+def create_subnets(vpc_id,vpc_name):
     subnetsArray = []
     subnets = ec2.describe_subnets(Filters=[{'Name': 'vpc-id','Values':[vpc_id]}])
     if subnets['Subnets'] == []:
@@ -47,13 +79,13 @@ def create_subnets(vpc_id):
                     if tag['Key'] == 'Name':
                         name = tag['Value']
             tx = graph.begin()
-            graphSubnet = Node("Subnet", subnetId=subnet['SubnetId'], name=name, az=subnet['AvailabilityZone'], cidr=subnet['CidrBlock'])
+            graphSubnet = Node("Subnet", subnetId=subnet['SubnetId'], name=name, az=subnet['AvailabilityZone'], cidr=subnet['CidrBlock'], parent=vpc_name)
             tx.merge(graphSubnet)
             tx.commit()
             subnetsArray.append(graphSubnet)
     return subnetsArray
 
-def create_igws(vpc_id):
+def create_igws(vpc_id,vpc_name):
     igwsArray = []
     igws = ec2.describe_internet_gateways(Filters=[{'Name': 'attachment.vpc-id', 'Values':[vpc_id]}])
     if igws['InternetGateways'] == []:
@@ -66,7 +98,7 @@ def create_igws(vpc_id):
                     if tag['Key'] == 'Name':
                         name = tag['Value']
             tx = graph.begin()
-            graphIgw = Node("IGW", igwId=igw['InternetGatewayId'], name=name)
+            graphIgw = Node("IGW", igwId=igw['InternetGatewayId'], name=name, parent=vpc_name)
             tx.merge(graphIgw)
             tx.commit()
             igwsArray.append(graphIgw)
