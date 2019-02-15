@@ -32,7 +32,7 @@ AWS SDK for python, used to get customer info
 ```docker run --publish=7474:7474 --publish=7687:7687 --env=NEO4J_AUTH=none neo4j```
 
 ### Script
-Corrent region name in \*.py file manually.
+Correct region name to yours in \*.py file manually.
 ```
 pip install -r requirements.txt
 export AWS_PROFILE=XYZ
