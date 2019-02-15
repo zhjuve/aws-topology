@@ -19,56 +19,53 @@ def create_vpc(graphRegion):
                         name = tag['Value']
 
             subnets = create_subnets(vpc['VpcId'],name)
-            azs = create_azs(vpc['VpcId'],name,graphRegion['name'])
+            # azs = create_azs(vpc['VpcId'],name,graphRegion['name'])
             igws = create_igws(vpc['VpcId'],name)
 
             tx = graph.begin()
-            graphVpc = Node("VPC", vpcId=vpc['VpcId'], name=name, cidr=vpc['CidrBlock'], region=graphRegion['name'])
+            graphVpc = Node("VPC", vpcId=vpc['VpcId'], name=name, cidr=vpc['CidrBlock'], region=graphRegion['name'],parent=graphRegion['name'])
             tx.merge(graphVpc)
             rel = Relationship(graphVpc, "BELONGS", graphRegion)
             tx.create(rel)
-            for az in azs:
-                rel = Relationship(az, "BELONGS", graphVpc)
-                rel = Relationship(az, "EXIST_IN", graphRegion)
-                tx.create(rel)
             for subnet in subnets:
-                selector = NodeSelector(graph)
-                print(subnet['az'])
-                graphAZ = selector.select("AZ",name=subnet['az']).first()
-                rel = Relationship(subnet, "BELONGS", graphAZ)
+                # print(subnet['az'])
+                # selector = NodeSelector(graph)
+                # graphAZ = selector.select("AZ",name=subnet['az']).first()
+                rel = Relationship(subnet, "BELONGS", graphVpc)
                 tx.create(rel)
             for igw in igws:
                 rel = Relationship(igw, "ATTACHED", graphVpc)
                 tx.create(rel)
             tx.commit()
 
-def create_azs(vpc_id,vpc_name,region):
-    arrayAZs = []
-    azs = ec2.describe_availability_zones(Filters=[
-                                              {
-                                                  'Name': 'region-name',
-                                                  'Values': [
-                                                      region,
-                                                  ]
-                                              },
-                                          ])
-#describe_subnets(Filters=[{'Name': 'vpc-id','Values':[vpc_id]}])
-    if azs['AvailabilityZones'] == []:
-        pass
-    else:
-        for az in azs['AvailabilityZones']:
-            name = ""
-            if (az.__contains__('Tags')):
-                for tag in az['Tags']:
-                    if tag['Key'] == 'ZoneName':
-                        name = tag['Value']
-                        print("zone name=",name)
-            tx = graph.begin()
-            graphAZ = Node("AZ", azId=az['ZoneId'], name=az['ZoneName'], parent=vpc_name)
-            tx.merge(graphAZ)
-            tx.commit()
-            arrayAZs.append(graphAZ)
-    return arrayAZs
+# def create_azs(vpc_id,vpc_name,region):
+    # arrayAZs = []
+    # azs = ec2.describe_availability_zones(Filters=[
+                                              # {
+                                                  # 'Name': 'region-name',
+                                                  # 'Values': [
+                                                      # region,
+                                                  # ]
+                                              # },
+                                          # ])
+
+    # if azs['AvailabilityZones'] == []:
+        # pass
+    # else:
+        # for az in azs['AvailabilityZones']:
+            # name = ""
+            # if (az.__contains__('Tags')):
+                # for tag in az['Tags']:
+                    # if tag['Key'] == 'ZoneName':
+                        # name = tag['Value']
+                        # print("zone name=",name)
+            # tx = graph.begin()
+            # graphAZ = Node("AZ", azId=az['ZoneId'], name=az['ZoneName'], parent=region)
+            # tx.merge(graphAZ)
+            # tx.commit()
+            # arrayAZs.append(graphAZ)
+
+    # return arrayAZs
 
 def create_subnets(vpc_id,vpc_name):
     subnetsArray = []
@@ -83,7 +80,7 @@ def create_subnets(vpc_id,vpc_name):
                     if tag['Key'] == 'Name':
                         name = tag['Value']
             tx = graph.begin()
-            graphSubnet = Node("Subnet", subnetId=subnet['SubnetId'], name=name, az=subnet['AvailabilityZone'], cidr=subnet['CidrBlock'], parent=subnet['AvailabilityZone'])
+            graphSubnet = Node("Subnet", subnetId=subnet['SubnetId'], name=name, az=subnet['AvailabilityZone'], cidr=subnet['CidrBlock'], parent=vpc_name)
             tx.merge(graphSubnet)
             tx.commit()
             subnetsArray.append(graphSubnet)
@@ -124,7 +121,7 @@ def create_ec2():
             if graphInstance is None:
                 if not instance['Instances'][0]['State']['Code'] == 48:
                     subnetId = instance['Instances'][0]['SubnetId']
-                    print("Subnet ID for instance" + instanceId + " is "+subnetId);
+                    # print("Subnet ID for instance" + instanceId + " is "+subnetId);
                     name = ""
                     if (instance['Instances'][0].__contains__('Tags')):
                         for tag in instance['Instances'][0]['Tags']:
@@ -142,11 +139,17 @@ def create_ec2():
 def create_rds():
     databases = rds.describe_db_instances()['DBInstances']
     for db in databases:
+        selector = NodeSelector(graph)
+        graphVPC = selector.select("VPC",vpcId=db['DBSubnetGroup']['VpcId']).first()
         tx = graph.begin()
-        graphRds = Node("RDS", rdsId=db['DBInstanceIdentifier'])
+        graphRds = Node("RDS", rdsId=db['DBInstanceIdentifier'], parent=graphVPC['name'])
         tx.merge(graphRds)
         tx.commit()
-
+        tx = graph.begin()
+        rel = Relationship(graphRds, "BELONGS", graphVPC)
+        tx.create(rel)
+        tx.commit()
+        
 def create_elc():
     elcs = elasticache.describe_cache_clusters()['CacheClusters']
     for elc in elcs:
@@ -245,9 +248,11 @@ def create_lambda():
 def create_sg():
     securityGroups = ec2.describe_security_groups()
     for sg in securityGroups['SecurityGroups']:
-        print(sg)
+        # print(sg)
+        selector = NodeSelector(graph)
+        graphVPC = selector.select("VPC",vpcId=sg['VpcId']).first()
         tx = graph.begin()
-        graphSg = Node("SecurityGroup", securityGroupId=sg['GroupId'], name=sg['GroupName'])
+        graphSg = Node("SecurityGroup", securityGroupId=sg['GroupId'], name=sg['GroupName'], parent=graphVPC['name'])
         tx.merge(graphSg)
         tx.commit()
 
@@ -265,12 +270,12 @@ def create_relationships():
         securityGroups = ec2.describe_security_groups()
 
         for sg in securityGroups['SecurityGroups']:
-            print(sg)
-            print("Searching graph for SG with ID ="+sg['GroupId'])
+            # print(sg)
+            # print("Searching graph for SG with ID ="+sg['GroupId'])
             selectorSg = NodeSelector(graph)
             graphSg = selectorSg.select("SecurityGroup",securityGroupId=sg['GroupId']).first()
-            print("Security Group graph search result=")
-            print(list(graphSg))
+            # print("Security Group graph search result=")
+            # print(list(graphSg))
             ingressRules = sg['IpPermissions']
             for rule in ingressRules:
                 if (rule['UserIdGroupPairs'] != []):
@@ -292,15 +297,15 @@ def create_relationships():
                         tx.commit()
                 if (rule['IpRanges'] != []):
                     for cidr in rule['IpRanges']:
-                        print("CIDR=")
-                        print(cidr)
+                        # print("CIDR=")
+                        # print(cidr)
                         tx = graph.begin()
                         selector = NodeSelector(graph)
                         graphCidr = selector.select("IP",cidr=cidr['CidrIp']).first()
                         if graphCidr is None:
                             graphCidr = Node("IP", cidr=cidr['CidrIp'])
-                            print("CIDR_IP=")
-                            print(cidr['CidrIp'])
+                            # print("CIDR_IP=")
+                            # print(cidr['CidrIp'])
                             tx.create(graphCidr)
                         if rule['IpProtocol'] == '-1':
                             protocol = 'All'
@@ -323,10 +328,10 @@ def create_relationships():
                 for instance in instances['Reservations']:
                     tx = graph.begin()
                     instanceId = instance['Instances'][0]['InstanceId']
-                    print("Instance ID = "+instanceId)
+                    # print("Instance ID = "+instanceId)
                     selectorEc2 = NodeSelector(graph)
                     graphEc2 = selectorEc2.select("EC2",instanceId=instanceId).first()
-                    print(graphEc2)
+                    # print(graphEc2)
                     rel = Relationship(graphEc2, "BELONGS", graphSg)
                     tx.create(rel)
                     tx.commit()
@@ -383,7 +388,7 @@ def create_relationships():
         pass
 
 
-regions = ["eu-west-1"]
+regions = ["eu-west-1","eu-north-1"]
 
 for region in regions:
     ec2 = boto3.client('ec2', region_name=region)
