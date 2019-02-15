@@ -27,14 +27,18 @@ def create_vpc(graphRegion):
             tx.merge(graphVpc)
             rel = Relationship(graphVpc, "BELONGS", graphRegion)
             tx.create(rel)
+            for az in azs:
+                rel = Relationship(az, "BELONGS", graphVpc)
+                rel = Relationship(az, "EXIST_IN", graphRegion)
+                tx.create(rel)
             for subnet in subnets:
-                rel = Relationship(subnet, "BELONGS", graphVpc)
+                selector = NodeSelector(graph)
+                print(subnet['az'])
+                graphAZ = selector.select("AZ",name=subnet['az']).first()
+                rel = Relationship(subnet, "BELONGS", graphAZ)
                 tx.create(rel)
             for igw in igws:
                 rel = Relationship(igw, "ATTACHED", graphVpc)
-                tx.create(rel)
-            for az in azs:
-                rel = Relationship(az, "BELONGS", graphVpc)
                 tx.create(rel)
             tx.commit()
 
