@@ -139,6 +139,7 @@ def create_ec2():
 def create_rds():
     databases = rds.describe_db_instances()['DBInstances']
     for db in databases:
+        print(db)
         selector = NodeSelector(graph)
         graphVPC = selector.select("VPC",vpcId=db['DBSubnetGroup']['VpcId']).first()
         tx = graph.begin()
@@ -187,28 +188,45 @@ def create_elb():
 def create_alb():
     albs = elbv2.describe_load_balancers()['LoadBalancers']
     for alb in albs:
+        # print(alb)
+        selector = NodeSelector(graph)
+        graphVPC = selector.select("VPC",vpcId=alb['VpcId']).first()
         tx = graph.begin()
-        graphAlb = Node("ALB", name=alb['LoadBalancerName'])
+        graphAlb = Node("ALB",
+                        name=alb['LoadBalancerName'],
+                        fqdn=alb['DNSName'],
+                        type=alb['Type'],
+                        parent=graphVPC['name'])
+        rel = Relationship(graphAlb, "EXIST_IN", graphVPC)
+        tx.create(rel)
         tx.merge(graphAlb)
+        graphFQDN = Node("FQDN", name=alb['DNSName'])
+        relFQDN = Relationship(graphAlb, "AVAILABLE_ON", graphFQDN)
+        tx.create(relFQDN)
         tx.commit()
         albArn = alb['LoadBalancerArn']
-        for subnet in alb['AvailabilityZones']:
-            tx = graph.begin()
-            selector = NodeSelector(graph)
-            graphSubnet = selector.select("Subnet",subnetId=subnet['SubnetId']).first()
-            rel = Relationship(graphAlb, "BELONGS", graphSubnet)
-            tx.create(rel)
-            tx.commit()
+        # for subnet in alb['AvailabilityZones']:
+            # tx = graph.begin()
+            # selector = NodeSelector(graph)
+            # graphSubnet = selector.select("Subnet",subnetId=subnet['SubnetId']).first()
+            # rel = Relationship(graphAlb, "BELONGS", graphSubnet)
+            # tx.create(rel)
+            # tx.commit()
 
 
         tgs = elbv2.describe_target_groups(LoadBalancerArn=albArn)['TargetGroups']
         for tg in tgs:
+            # print(tg)
             tgArn = tg['TargetGroupArn']
             targets = elbv2.describe_target_health(TargetGroupArn=tgArn)['TargetHealthDescriptions']
             tx = graph.begin()
-            graphTG = Node("Target Group", name=tg['TargetGroupName'])
+            graphTG = Node("TargetGroup",
+                            name=tg['TargetGroupName'],
+                            protocol=tg['Protocol'],
+                            port=tg['Port'],
+                            parent=graphVPC['name'])
             tx.merge(graphTG)
-            rel = Relationship(graphTG, "BELONGS", graphAlb)
+            rel = Relationship(graphTG, "EXPOSE_PORT_"+str(tg['Port']), graphAlb)
             tx.create(rel)
             tx.commit()
             for target in targets:
